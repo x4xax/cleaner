@@ -32,6 +32,9 @@ A lightweight utility for cleaning up Xbox Live-related files, registry entries,
 - Administrator privileges
 - Visual C++ Redistributable 2019 or newer
 
+## VirusTotal scan
+- The scan is available here: https://www.virustotal.com/gui/file/ab823fa8f56ed741947e264815095cea3fb2f26bd3a6910d3eff694adcb945be/detection .
+
 ## Building from Source
 
 ### Prerequisites
