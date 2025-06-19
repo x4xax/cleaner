@@ -24,16 +24,7 @@ A lightweight utility for cleaning up Xbox Live-related files, registry entries,
    - Delete temporary package files
    - Reset Xbox apps (Windows 11 only)
 3. Wait for the "Cleaning complete" message
-4. Restart your computer
-
-## When to Use
-
-This tool can help resolve various Xbox-related issues on Windows:
-- Xbox app sign-in problems
-- "Gaming services need repair" errors
-- Xbox Game Pass app failing to launch games
-- Authentication loops in the Xbox app
-- Connection issues with Xbox Live
+(4. Restart your computer)
 
 ## System Requirements
 
