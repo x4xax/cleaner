@@ -17,8 +17,8 @@ int main()
 	std::cout << "Cleaning creds...\n";
 	clean::cleanCreds();
 
-	std::cout << "Blocking hosts...\n";
-	clean::blockHosts();
+	//std::cout << "Blocking hosts...\n";
+	//clean::blockHosts();
 
 	std::cout << "Cleaning registry...\n";
 	clean::cleanReg();
@@ -41,4 +41,5 @@ int main()
 	std::cout << "Cleaning complete\n";
 	//MessageBox(NULL, (L"Cleaning complete", L"Task finished", MB_OK | MB_ICONINFORMATION));
 	return 0;
+
 }
