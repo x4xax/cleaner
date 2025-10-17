@@ -26,11 +26,12 @@ proc procs[]
 
 regKey regKeys[]
 {
-    { HKEY_CURRENT_USER, _T("Software\\Microsoft\\IdentityCRL") },
-    { HKEY_LOCAL_MACHINE,_T("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OneSettings\\xbox") },
-    { HKEY_USERS,_T("\\.DEFAULT\\Software\\Microsoft\\IdentityCRL") },
-    { HKEY_LOCAL_MACHINE,_T("SOFTWARE\\Microsoft\\XboxLive") },
-    { HKEY_CURRENT_USER, _T("Software\\Microsoft\\SQMClient") }
+    { HKEY_CURRENT_USER,    _T("Software\\Microsoft\\IdentityCRL") },
+    { HKEY_LOCAL_MACHINE,   _T("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OneSettings\\xbox") },
+    { HKEY_USERS,           _T(".DEFAULT\\Software\\Microsoft\\IdentityCRL") },
+    { HKEY_LOCAL_MACHINE,   _T("SOFTWARE\\Microsoft\\XboxLive") },
+    { HKEY_CURRENT_USER,    _T("SOFTWARE\\Microsoft\\SQMClient\\MachineId") },
+    { HKEY_CURRENT_USER,    _T("SOFTWARE\\Epic Games\\Unreal Engine") }
 };
 
 host hosts[]
@@ -87,18 +88,16 @@ namespace clean {
             PCREDENTIAL pcred = credentials[i];
             const std::string targetName = utils::ws2s(pcred->TargetName);
 
-            if (targetName.substr(0, 3) == "Xbl" ||
-                targetName.substr(0, 2) == "Mi" ||
-                targetName.substr(0, 4) == "Xbox" ||
-                targetName.substr(0, 3) == "SSO") {
-                if (!CredDelete(pcred->TargetName, pcred->Type, 0)) {
-                    CredFree(credentials);
-                    return 1;
-                }
-            }
+            if (targetName.substr(0, 2) == "Xbl" ||
+                targetName.substr(0, 1) == "Mi" ||
+                targetName.substr(0, 3) == "Xbox") 
+                
+                CredDelete(pcred->TargetName, pcred->Type, 0);
+            
         }
 
         CredFree(credentials);
+        ShellExecute(NULL, L"open", L"control.exe", L"keymgr.dll", NULL, SW_SHOW);
         return 0;
     }
 
@@ -118,37 +117,6 @@ namespace clean {
                 Log("Reg: delete failed '%s\\%ls' (err=%lu)\n", utils::HiveToStr(root), sub, err);
             }
         }
-    }
-
-    void blockHosts()
-    {
-        WCHAR lpBuffer[MAX_PATH];
-        DWORD dwRet;
-        std::string winPath;
-
-        dwRet = GetEnvironmentVariableW(L"WINDIR", lpBuffer, MAX_PATH);
-        if (dwRet == 0 || dwRet > MAX_PATH)
-            winPath = "C:\\Windows\\System32\\drivers\\etc\\hosts";
-        else
-            winPath = utils::LPWSTRToString(lpBuffer) + std::string("\\System32\\drivers\\etc\\hosts"); {
-            std::ifstream inf{ winPath };
-
-            if (!inf)
-                return;
-
-            std::string strInput{};
-            while (std::getline(inf, strInput))
-            {
-                std::regex regex("analytics.xboxlive.com");
-                if (std::regex_search(strInput, regex))
-                    return;
-            }
-        }
-        std::ofstream outf{ winPath, std::ios::app | std::ios::ate };
-        if (!outf)
-            return;
-        for (size_t i = 0; i < sizeof(hosts) / sizeof(host); i++)
-            outf << "0.0.0.0 " << hosts[i].name << std::endl;
     }
 
     void delFolder()
@@ -491,31 +459,6 @@ namespace utils
         catch (...) {
             Log("Unknown exception while deleting '%ls'\n", folderPath.c_str());
         }
-    }
-
-
-    RTL_OSVERSIONINFOW GetRealOSVersion() {
-        HMODULE hMod = ::GetModuleHandleW(L"ntdll.dll");
-        if (hMod) {
-            RtlGetVersionPtr fxPtr = (RtlGetVersionPtr)::GetProcAddress(hMod, "RtlGetVersion");
-            if (fxPtr != nullptr) {
-                RTL_OSVERSIONINFOW rovi = { 0 };
-                rovi.dwOSVersionInfoSize = sizeof(rovi);
-                if (STATUS_SUCCESS == fxPtr(&rovi)) {
-                    return rovi;
-                }
-            }
-        }
-        RTL_OSVERSIONINFOW rovi = { 0 };
-        return rovi;
-    }
-
-    BOOL isWin11()
-    {
-        auto ver = GetRealOSVersion();
-        if (ver.dwBuildNumber >= 22621)
-            return TRUE;
-        return FALSE;
     }
 
     INT findMyProc(const char* procname) {

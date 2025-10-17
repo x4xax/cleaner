@@ -60,9 +60,6 @@ namespace clean
     void killProcs();
     INT cleanCreds();
     void cleanReg();
-    void flushDns();
-    void resetApps();
-    void blockHosts();
     void delFolder();
 }
 
