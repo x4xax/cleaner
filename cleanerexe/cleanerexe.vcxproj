@@ -105,7 +105,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -136,7 +136,6 @@
   <ItemGroup>
     <ClCompile Include="clean.cpp" />
     <ClCompile Include="cleanerexe.cpp" />
-    <ClCompile Include="skcrypt.h" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="global.h" />

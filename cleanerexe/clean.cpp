@@ -30,9 +30,8 @@ regKey regKeys[]
     { HKEY_LOCAL_MACHINE,_T("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OneSettings\\xbox") },
     { HKEY_USERS,_T("\\.DEFAULT\\Software\\Microsoft\\IdentityCRL") },
     { HKEY_LOCAL_MACHINE,_T("SOFTWARE\\Microsoft\\XboxLive") },
-    { HKEY_CURRENT_USER, _T("Software\\Microsoft\\XboxLive") }
+    { HKEY_CURRENT_USER, _T("Software\\Microsoft\\SQMClient") }
 };
-
 
 host hosts[]
 {
@@ -107,54 +106,18 @@ namespace clean {
     {
         for (size_t i = 0; i < sizeof(regKeys) / sizeof(regKey); i++)
         {
-            bool result = utils::RegDelnode(regKeys[i].hKeyRoot, regKeys[i].lpSubKey);
+            HKEY root = regKeys[i].hKeyRoot;
+            LPCTSTR sub = regKeys[i].lpSubKey;
+
+            Log("Reg: deleting '%s\\%ls'\n", utils::HiveToStr(root), sub);
+            bool result = utils::RegDelnode(root, sub);
+            if (result) {
+                Log("Reg: deleted OK '%s\\%ls'\n", utils::HiveToStr(root), sub);
+            } else {
+                DWORD err = GetLastError();
+                Log("Reg: delete failed '%s\\%ls' (err=%lu)\n", utils::HiveToStr(root), sub, err);
+            }
         }
-    }
-
-    void flushDns()
-    {
-        BOOL(WINAPI * DoDnsFlushResolverCache)();
-        *(FARPROC*)&DoDnsFlushResolverCache = GetProcAddress(LoadLibrary(L"dnsapi.dll"), "DnsFlushResolverCache");
-        if (!DoDnsFlushResolverCache)
-        {
-            const char* cmd = skCrypt("ipconfig / flushdns");
-            system(cmd);
-        }
-        else
-        {
-            DoDnsFlushResolverCache();
-        }
-    }
-
-    void resetApps()
-    {
-        std::wstring psCommand = L"powershell.exe -WindowStyle hidden -Command \"Get-AppxPackage *Microsoft.GamingApp* | Reset-AppxPackage;Get-AppxPackage *Microsoft.XboxGamingOverlay* | Reset-AppxPackage;Get-AppxPackage *Microsoft.XboxGameOverlay* | Reset-AppxPackage;Get-AppxPackage *Microsoft.SeaofThieves* | Reset-AppxPackage\"";
-
-        PROCESS_INFORMATION processInfo;
-        ZeroMemory(&processInfo, sizeof(PROCESS_INFORMATION));
-
-        STARTUPINFO startupInfo;
-        ZeroMemory(&startupInfo, sizeof(STARTUPINFO));
-        startupInfo.cb = sizeof(STARTUPINFO);
-        startupInfo.dwFlags |= STARTF_USESTDHANDLES;
-
-        BOOL result = CreateProcessW(
-            NULL,
-            &psCommand[0],
-            NULL,
-            NULL,
-            NULL,
-            0,
-            NULL,
-            NULL,
-            &startupInfo,
-            &processInfo
-        );
-
-        WaitForSingleObject(processInfo.hProcess, INFINITE);
-
-        CloseHandle(processInfo.hProcess);
-        CloseHandle(processInfo.hThread);
     }
 
     void blockHosts()
@@ -185,42 +148,62 @@ namespace clean {
         if (!outf)
             return;
         for (size_t i = 0; i < sizeof(hosts) / sizeof(host); i++)
-            outf << skCrypt("0.0.0.0 ") << hosts[i].name << std::endl;
+            outf << "0.0.0.0 " << hosts[i].name << std::endl;
     }
 
     void delFolder()
     {
         try {
-            size_t pathCount = sizeof(paths) / sizeof(path);
-            size_t subFolderCount = sizeof(subFolders) / sizeof(path);
-            size_t count = (pathCount < subFolderCount) ? pathCount : subFolderCount;
+            const size_t pathCount = sizeof(paths) / sizeof(path);
+            const size_t subFolderCount = sizeof(subFolders) / sizeof(path);
 
-            for (size_t i = 0; i < count; i++)
-            {
-                if (paths[i].path == nullptr) {
+            for (size_t p = 0; p < pathCount; ++p) {
+                if (paths[p].path == nullptr) continue;
+
+                std::wstring appxPrefix(paths[p].path, paths[p].path + std::strlen(paths[p].path));
+                std::wstring basePath = utils::findAppxFolder(appxPrefix);
+                if (basePath.empty()) {
+                    Log("Appx folder not found for prefix '%ls'\n", appxPrefix.c_str());
                     continue;
                 }
 
-                std::wstring appxPrefix(paths[i].path, paths[i].path + strlen(paths[i].path));
-                std::wstring fullPath = utils::findAppxFolder(appxPrefix);
+                for (size_t s = 0; s < subFolderCount; ++s) {
+                    if (subFolders[s].path == nullptr || subFolders[s].path[0] == '\0') continue;
 
-                if (fullPath.empty()) {
-                    continue;
+                    std::wstring fullPath = basePath;
+                    if (!fullPath.empty() && fullPath.back() != L'\\') fullPath += L'\\';
+                    std::wstring subFolder(subFolders[s].path, subFolders[s].path + std::strlen(subFolders[s].path));
+                    fullPath += subFolder;
+
+                    DWORD attr = GetFileAttributesW(fullPath.c_str());
+                    if (attr == INVALID_FILE_ATTRIBUTES || !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                        Log("Target not a directory or missing: '%ls'\n", fullPath.c_str());
+                        continue;
+                    }
+
+                    Log("Cleaning folder: '%ls'\n", fullPath.c_str());
+                    utils::deleteFolderContents(fullPath);
+                    Log("Finished cleaning: '%ls'\n", fullPath.c_str());
+
+                    // Optionally remove the now-empty subfolder itself
+                    if (RemoveDirectoryW(fullPath.c_str())) {
+                        Log("Removed directory: '%ls'\n", fullPath.c_str());
+                    } else {
+                        DWORD err = GetLastError();
+                        if (err == ERROR_DIR_NOT_EMPTY) {
+                            Log("Directory not empty after cleaning (likely locked files): '%ls'\n", fullPath.c_str());
+                        } else {
+                            Log("RemoveDirectoryW failed for '%ls' (err=%lu)\n", fullPath.c_str(), err);
+                        }
+                    }
                 }
-
-                if (subFolders[i].path != nullptr && subFolders[i].path[0] != '\0') {
-                    std::wstring subFolder(subFolders[i].path, subFolders[i].path + strlen(subFolders[i].path));
-                    fullPath = fullPath + L"\\" + subFolder;
-                }
-
-                utils::deleteFolderContents(fullPath);
             }
         }
-        catch (const std::exception&) {
-            printf("Failed to delete packages, might have to do it manually\n");
+        catch (const std::exception& ex) {
+            Log("Exception in delFolder(): %s\n", ex.what());
         }
         catch (...) {
-            printf("Failed to delete packages, might have to do it manually\n");
+            Log("Failed to delete packages, might have to do it manually\n");
         }
     }
 
@@ -230,6 +213,24 @@ namespace clean {
 
 namespace utils
 {
+
+    int DeleteFolderContentsWithSFO(const std::wstring& dir)
+    {
+        std::vector<wchar_t> list;
+        if (!utils::BuildDoubleNullListFromDir(dir, list)) {
+            return 0;
+        }
+
+        SHFILEOPSTRUCTW op{};
+        op.wFunc = FO_DELETE;
+        op.pFrom = list.data();
+        op.fFlags = FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI | FOF_ALLOWUNDO; // remove FOF_ALLOWUNDO for permanent delete
+
+        int rc = SHFileOperationW(&op);
+        if (rc != 0) return rc;
+        if (op.fAnyOperationsAborted) return ERROR_CANCELLED;
+        return 0;
+    }
 
     inline std::wstring findAppxFolder(const std::wstring& prefix)
     {
@@ -279,27 +280,44 @@ namespace utils
 
     inline bool forceDeleteFile(const std::wstring& filePath)
     {
-        SetFileAttributesW(filePath.c_str(), FILE_ATTRIBUTE_NORMAL);
+        // Try to normalize attributes first
+        if (!SetFileAttributesW(filePath.c_str(), FILE_ATTRIBUTE_NORMAL)) {
+            DWORD err = GetLastError();
+            Log("SetFileAttributesW failed for '%ls' (err=%lu)\n", filePath.c_str(), err);
+        }
 
+        // Direct delete
         if (DeleteFileW(filePath.c_str())) {
+            Log("Deleted file: '%ls'\n", filePath.c_str());
             return true;
+        } else {
+            DWORD err = GetLastError();
+            Log("DeleteFileW failed for '%ls' (err=%lu). Trying fallbacks...\n", filePath.c_str(), err);
         }
 
-        HANDLE hFile = CreateFileW(
-            filePath.c_str(),
-            GENERIC_READ | GENERIC_WRITE | DELETE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 
-            NULL,
-            OPEN_EXISTING,
-            FILE_FLAG_DELETE_ON_CLOSE,
-            NULL
-        );
+        // Delete on close
+        {
+            HANDLE hFile = CreateFileW(
+                filePath.c_str(),
+                GENERIC_READ | GENERIC_WRITE | DELETE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 
+                NULL,
+                OPEN_EXISTING,
+                FILE_FLAG_DELETE_ON_CLOSE,
+                NULL
+            );
 
-        if (hFile != INVALID_HANDLE_VALUE) {
-            CloseHandle(hFile); 
-            return true;
+            if (hFile != INVALID_HANDLE_VALUE) {
+                CloseHandle(hFile);
+                Log("Deleted (DELETE_ON_CLOSE): '%ls'\n", filePath.c_str());
+                return true;
+            } else {
+                DWORD err = GetLastError();
+                Log("CreateFileW(DELETE_ON_CLOSE) failed for '%ls' (err=%lu)\n", filePath.c_str(), err);
+            }
         }
 
+        // Special handling for cache path pattern
         if (filePath.find(L"CryptnetUrlCache") != std::wstring::npos) {
             PROCESS_INFORMATION pi = { 0 };
             STARTUPINFOW si = { sizeof(STARTUPINFOW) };
@@ -313,39 +331,67 @@ namespace utils
                 CloseHandle(pi.hThread);
 
                 if (DeleteFileW(filePath.c_str())) {
+                    Log("Deleted after ClearMyTracks (CryptnetUrlCache): '%ls'\n", filePath.c_str());
                     return true;
+                } else {
+                    DWORD err = GetLastError();
+                    Log("DeleteFileW still failed after ClearMyTracks for '%ls' (err=%lu)\n", filePath.c_str(), err);
                 }
+            } else {
+                DWORD err = GetLastError();
+                Log("CreateProcessW ClearMyTracks failed (8) for '%ls' (err=%lu)\n", filePath.c_str(), err);
             }
         }
 
-        std::wstring tempName = filePath + L".deleteme";
-        if (MoveFileW(filePath.c_str(), tempName.c_str())) {
-            if (DeleteFileW(tempName.c_str())) {
-                return true;
+        // Rename then delete
+        {
+            std::wstring tempName = filePath + L".deleteme";
+            if (MoveFileW(filePath.c_str(), tempName.c_str())) {
+                if (DeleteFileW(tempName.c_str())) {
+                    Log("Deleted via rename: '%ls' -> '%ls'\n", filePath.c_str(), tempName.c_str());
+                    return true;
+                } else {
+                    DWORD err = GetLastError();
+                    Log("DeleteFileW of temp failed '%ls' (err=%lu)\n", tempName.c_str(), err);
+                }
+            } else {
+                DWORD err = GetLastError();
+                Log("MoveFileW failed for '%ls' -> '%ls' (err=%lu)\n", filePath.c_str(), tempName.c_str(), err);
             }
         }
 
-        SECURITY_ATTRIBUTES sa = { 0 };
-        sa.nLength = sizeof(sa);
-        sa.bInheritHandle = FALSE;
+        // Attempt to adjust permissions then delete
+        {
+            SECURITY_ATTRIBUTES sa = { 0 };
+            sa.nLength = sizeof(sa);
+            sa.bInheritHandle = FALSE;
 
-        HANDLE hTemp = CreateFileW(
-            filePath.c_str(),
-            WRITE_OWNER | WRITE_DAC,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            &sa,
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL,
-            NULL
-        );
+            HANDLE hTemp = CreateFileW(
+                filePath.c_str(),
+                WRITE_OWNER | WRITE_DAC,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                &sa,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                NULL
+            );
 
-        if (hTemp != INVALID_HANDLE_VALUE) {
-            CloseHandle(hTemp);
-            if (DeleteFileW(filePath.c_str())) {
-                return true;
+            if (hTemp != INVALID_HANDLE_VALUE) {
+                CloseHandle(hTemp);
+                if (DeleteFileW(filePath.c_str())) {
+                    Log("Deleted after permission adjust: '%ls'\n", filePath.c_str());
+                    return true;
+                } else {
+                    DWORD err = GetLastError();
+                    Log("DeleteFileW failed after permission adjust for '%ls' (err=%lu)\n", filePath.c_str(), err);
+                }
+            } else {
+                DWORD err = GetLastError();
+                Log("CreateFileW(WRITE_OWNER|WRITE_DAC) failed for '%ls' (err=%lu)\n", filePath.c_str(), err);
             }
         }
 
+        Log("Failed to delete file: '%ls'\n", filePath.c_str());
         return false; 
     }
 
@@ -357,8 +403,13 @@ namespace utils
             std::error_code ec;
 
             if (!fs::exists(folderPath, ec) || !fs::is_directory(folderPath, ec)) {
+                if (ec) {
+                    Log("Path check failed for '%ls': %s\n", folderPath.c_str(), ec.message().c_str());
+                }
                 return;
             }
+
+            Log("Traversing: '%ls'\n", folderPath.c_str());
 
             bool isSystemCacheFolder = 
                 folderPath.find(L"CryptnetUrlCache") != std::wstring::npos ||
@@ -376,40 +427,69 @@ namespace utils
                     WaitForSingleObject(pi.hProcess, 5000);
                     CloseHandle(pi.hProcess);
                     CloseHandle(pi.hThread);
+                    Log("Issued ClearMyTracks (255) before deleting '%ls'\n", folderPath.c_str());
+                } else {
+                    DWORD err = GetLastError();
+                    Log("CreateProcessW ClearMyTracks failed (255) for '%ls' (err=%lu)\n", folderPath.c_str(), err);
                 }
             }
 
             std::vector<std::wstring> failedFiles;
-            
-            for (const auto& entry : fs::directory_iterator(folderPath, ec)) {
-                if (ec) continue;
-                
-                if (fs::is_directory(entry, ec)) {
-                    deleteFolderContents(entry.path().wstring());
-                    
-                    RemoveDirectoryW(entry.path().c_str());
+
+            // First pass: recurse into subdirectories and remove them
+            std::error_code iterEc;
+            for (const auto& entry : fs::directory_iterator(folderPath, iterEc)) {
+                if (iterEc) {
+                    Log("directory_iterator error in '%ls': %s\n", folderPath.c_str(), iterEc.message().c_str());
+                    break;
                 }
-            }
-            
-            for (const auto& entry : fs::directory_iterator(folderPath, ec)) {
-                if (ec) continue;
-                
-                if (!fs::is_directory(entry, ec)) {
-                    if (!forceDeleteFile(entry.path().wstring())) {
-                        failedFiles.push_back(entry.path().wstring());
+                if (fs::is_directory(entry, iterEc)) {
+                    if (iterEc) {
+                        Log("is_directory check error for '%ls': %s\n", entry.path().wstring().c_str(), iterEc.message().c_str());
+                        iterEc.clear();
+                    } else {
+                        deleteFolderContents(entry.path().wstring());
+                        if (RemoveDirectoryW(entry.path().c_str())) {
+                            Log("Removed directory: '%ls'\n", entry.path().c_str());
+                        } else {
+                            DWORD err = GetLastError();
+                            Log("RemoveDirectoryW failed for '%ls' (err=%lu)\n", entry.path().c_str(), err);
+                        }
                     }
                 }
             }
-            
+
+            // Second pass: delete files
+            iterEc.clear();
+            for (const auto& entry : fs::directory_iterator(folderPath, iterEc)) {
+                if (iterEc) {
+                    Log("directory_iterator error in '%ls': %s\n", folderPath.c_str(), iterEc.message().c_str());
+                    break;
+                }
+                if (!fs::is_directory(entry, iterEc)) {
+                    if (iterEc) {
+                        Log("is_directory check error for '%ls': %s\n", entry.path().wstring().c_str(), iterEc.message().c_str());
+                        iterEc.clear();
+                    } else {
+                        if (!forceDeleteFile(entry.path().wstring())) {
+                            failedFiles.push_back(entry.path().wstring());
+                        }
+                    }
+                }
+            }
+
+            // Retry failed files one more time
             for (const auto& failedFile : failedFiles) {
-                forceDeleteFile(failedFile);
+                if (!forceDeleteFile(failedFile)) {
+                    Log("Retry still failed for file: '%ls'\n", failedFile.c_str());
+                }
             }
         }
-        catch (const std::exception&) {
-            printf("Failed to delete packages, might have to do it manually\n");
+        catch (const std::exception& ex) {
+            Log("Exception while deleting '%ls': %s\n", folderPath.c_str(), ex.what());
         }
         catch (...) {
-            printf("Failed to delete packages, might have to do it manually\n");
+            Log("Unknown exception while deleting '%ls'\n", folderPath.c_str());
         }
     }
 
@@ -476,6 +556,20 @@ namespace utils
         }
     }
 
+    // --- helper to print hive names in logs ---
+    inline const char* HiveToStr(HKEY h)
+    {
+        if (h == HKEY_CLASSES_ROOT)   return "HKCR";
+        if (h == HKEY_CURRENT_USER)   return "HKCU";
+        if (h == HKEY_LOCAL_MACHINE)  return "HKLM";
+        if (h == HKEY_USERS)          return "HKU";
+        if (h == HKEY_PERFORMANCE_DATA) return "HKPD";
+        if (h == HKEY_CURRENT_CONFIG) return "HKCC";
+        if (h == HKEY_DYN_DATA)       return "HKDD";
+        return "HKEY_UNKNOWN";
+    }
+
+    // --- modified recursive delete with detailed debug output ---
     BOOL RegDelnodeRecurse(HKEY hKeyRoot, LPTSTR lpSubKey)
     {
         LPTSTR lpEnd;
@@ -485,19 +579,24 @@ namespace utils
         HKEY hKey;
         FILETIME ftWrite;
 
+        // First try direct delete
         lResult = RegDeleteKey(hKeyRoot, lpSubKey);
-
-        if (lResult == ERROR_SUCCESS)
+        if (lResult == ERROR_SUCCESS) {
+            Log("RegDeleteKey succeeded: '%s\\%ls'\n", HiveToStr(hKeyRoot), lpSubKey);
             return TRUE;
+        } else {
+            Log("RegDeleteKey initial failed for '%s\\%ls' (err=%ld)\n", HiveToStr(hKeyRoot), lpSubKey, lResult);
+        }
 
-        lResult = RegOpenKeyEx(hKeyRoot, lpSubKey, 0, KEY_READ, &hKey);
-
+        // Open the key to enumerate children
+        lResult = RegOpenKeyEx(hKeyRoot, lpSubKey, 0, KEY_READ | KEY_WRITE, &hKey);
         if (lResult != ERROR_SUCCESS)
         {
             if (lResult == ERROR_FILE_NOT_FOUND) {
+                Log("RegOpenKeyEx: not found '%s\\%ls'\n", HiveToStr(hKeyRoot), lpSubKey);
                 return FALSE;
-            }
-            else {
+            } else {
+                Log("RegOpenKeyEx failed for '%s\\%ls' (err=%ld)\n", HiveToStr(hKeyRoot), lpSubKey, lResult);
                 return FALSE;
             }
         }
@@ -518,41 +617,52 @@ namespace utils
         if (lResult == ERROR_SUCCESS)
         {
             do {
-
                 *lpEnd = TEXT('\0');
                 StringCchCat(lpSubKey, MAX_PATH * 2, szName);
+                Log("Reg: recurse into '%s\\%ls'\n", HiveToStr(hKeyRoot), lpSubKey);
 
                 if (!RegDelnodeRecurse(hKeyRoot, lpSubKey)) {
+                    Log("Reg: recurse failed on '%s\\%ls'\n", HiveToStr(hKeyRoot), lpSubKey);
                     break;
                 }
 
                 dwSize = MAX_PATH;
-
                 lResult = RegEnumKeyEx(hKey, 0, szName, &dwSize, NULL,
                     NULL, NULL, &ftWrite);
 
             } while (lResult == ERROR_SUCCESS);
         }
+        else if (lResult != ERROR_NO_MORE_ITEMS) {
+            Log("RegEnumKeyEx failed for '%s\\%ls' (err=%ld)\n", HiveToStr(hKeyRoot), lpSubKey, lResult);
+        }
 
+        // Remove the trailing backslash
         lpEnd--;
         *lpEnd = TEXT('\0');
 
         RegCloseKey(hKey);
 
+        // Try deleting the parent key again after children removed
         lResult = RegDeleteKey(hKeyRoot, lpSubKey);
-
-        if (lResult == ERROR_SUCCESS)
+        if (lResult == ERROR_SUCCESS) {
+            Log("RegDeleteKey succeeded after recursion: '%s\\%ls'\n", HiveToStr(hKeyRoot), lpSubKey);
             return TRUE;
+        }
 
+        Log("RegDeleteKey failed after recursion: '%s\\%ls' (err=%ld)\n", HiveToStr(hKeyRoot), lpSubKey, lResult);
         return FALSE;
     }
 
+    // --- modified wrapper to log entry/exit ---
     bool RegDelnode(HKEY hKeyRoot, LPCTSTR lpSubKey)
     {
         TCHAR szDelKey[MAX_PATH * 2];
-
         StringCchCopy(szDelKey, MAX_PATH * 2, lpSubKey);
-        return RegDelnodeRecurse(hKeyRoot, szDelKey);
+
+        Log("RegDelnode start: '%s\\%ls'\n", HiveToStr(hKeyRoot), szDelKey);
+        BOOL ok = RegDelnodeRecurse(hKeyRoot, szDelKey);
+        Log("RegDelnode %s: '%s\\%ls'\n", ok ? "success" : "failure", HiveToStr(hKeyRoot), szDelKey);
+        return ok ? true : false;
     }
 
     std::string LPWSTRToString(LPWSTR lpwstr)
@@ -577,5 +687,39 @@ namespace utils
         std::string strTo(size_needed, 0);
         WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
         return strTo;
+    }
+
+    bool BuildDoubleNullListFromDir(const std::wstring& dir, std::vector<wchar_t>& out)
+    {
+        out.clear();
+
+        std::wstring pattern = dir;
+        if (!pattern.empty() && pattern.back() != L'\\') pattern += L'\\';
+        pattern += L"*";
+
+        WIN32_FIND_DATAW ffd{};
+        HANDLE hFind = FindFirstFileW(pattern.c_str(), &ffd);
+        if (hFind == INVALID_HANDLE_VALUE) {
+            // Nothing to delete if folder empty or missing
+            return false;
+        }
+
+        do {
+            const wchar_t* name = ffd.cFileName;
+            if (wcscmp(name, L".") == 0 || wcscmp(name, L"..") == 0) continue;
+
+            std::wstring full = dir;
+            if (!full.empty() && full.back() != L'\\') full += L'\\';
+            full += name;
+
+            // Append this path as a null-terminated string
+            out.insert(out.end(), full.begin(), full.end());
+            out.push_back(L'\0');
+        } while (FindNextFileW(hFind, &ffd));
+        FindClose(hFind);
+
+        // Double-null terminate
+        out.push_back(L'\0');
+        return true;
     }
 }

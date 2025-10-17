@@ -6,7 +6,7 @@
 
 int main()
 {
-	bool execute = true;
+	/*bool execute = true;
 	BOOL win11 = utils::isWin11();
 	std::thread killProces([execute]()
 		{
@@ -15,7 +15,7 @@ int main()
 		}
 	);
 	std::cout << "Cleaning creds...\n";
-	clean::cleanCreds();
+	clean::cleanCreds();*/
 
 	//std::cout << "Blocking hosts...\n";
 	//clean::blockHosts();
@@ -23,20 +23,20 @@ int main()
 	std::cout << "Cleaning registry...\n";
 	clean::cleanReg();
 
-	std::cout << "Flushing DNS...\n";
+	/*std::cout << "Flushing DNS...\n";
 	clean::flushDns();
 	if (win11)
 	{
 		std::cout << "Resetting Windows...\n";
 		clean::resetApps();
-	}
+	}*/
 
-	std::cout << "Deleting Packages...\n";
-	clean::delFolder();
+	/*std::cout << "Deleting Packages...\n";
+	clean::delFolder();*/
 
-	execute = false;
+	/*execute = false;
 
-	killProces.detach();
+	killProces.detach();*/
     
 	std::cout << "Cleaning complete\n";
 	//MessageBox(NULL, (L"Cleaning complete", L"Task finished", MB_OK | MB_ICONINFORMATION));
