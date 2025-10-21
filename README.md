@@ -6,34 +6,21 @@ A lightweight utility for cleaning up Xbox Live-related files, registry entries,
 
 - Terminates Xbox-related processes to ensure clean access to files
 - Removes problematic Xbox credentials from Windows Credential Manager
+- Changes various GUIDs
 - Cleans Xbox-related registry entries that can cause connection issues
 - Blocks known telemetry servers via hosts file modification
-- Flushes DNS cache to resolve connection problems
 - Cleans temporary files from Xbox app packages
-- Windows 11 support with automatic detection
-- For Windows 11: Automatically resets Xbox gaming-related Windows apps
-
+  
 ## Usage
 
 1. Run the application as Administrator (required for system file access)
-2. The utility will automatically:
-   - Clean Xbox credentials
-   - Block problematic hosts
-   - Clean registry entries
-   - Flush DNS cache
-   - Delete temporary package files
-   - Reset Xbox apps (Windows 11 only)
-3. Wait for the "Cleaning complete" message
+2. Wait for the "Cleaning complete" message
+3. Delete the remaning SSO_POP_DEVICE and virtulapp credentials
 (4. Restart your computer)
 
-## System Requirements
-
-- Windows 10 or Windows 11
-- Administrator privileges
-- Visual C++ Redistributable 2019 or newer
-
-## VirusTotal scan
-- The scan is available here: https://www.virustotal.com/gui/file/ab823fa8f56ed741947e264815095cea3fb2f26bd3a6910d3eff694adcb945be/detection .
+## TODO
+- Protected credentials removal
+- MAC Spoofing 
 
 ## Building from Source
 
