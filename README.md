@@ -13,25 +13,16 @@ A lightweight utility for cleaning up Xbox Live-related files, registry entries,
   
 ## Usage
 
-1. Run the application as Administrator (required for system file access)
-2. Wait for the "Cleaning complete" message
-3. Delete the remaning SSO_POP_DEVICE and virtulapp credentials
-(4. Restart your computer)
+1. Remove accounts from Windows settings
+2. Run the application as Administrator (required for system file access)
+3. Wait for the "Cleaning complete" message
+4. Delete the remaning SSO_POP_DEVICE and virtulapp credentials
+5. (Restart your computer)
 
 ## TODO
 - Protected credentials removal
-- MAC Spoofing 
-
-## Building from Source
-
-### Prerequisites
-- Visual Studio 2019/2022 with C++20 support
-- Windows SDK 10.0 or later
-
-### Build Steps
-1. Open the solution in Visual Studio
-2. Build in Release configuration
-3. Run the resulting executable as Administrator
+- MAC Spoofing
+- Remove accounts from Windows settings
 
 ## License
 
