@@ -69,3 +69,8 @@ namespace spoof
 {
     void SpoofSystemIds();
 }
+
+namespace utils
+{
+    inline const char* HiveToStr(HKEY h);
+}

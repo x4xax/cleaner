@@ -54,6 +54,21 @@ path subFolders[]
     { "LocalCache" }
 };
 
+namespace utils
+{
+    inline const char* HiveToStr(HKEY h)
+    {
+        if (h == HKEY_CLASSES_ROOT)   return "HKCR";
+        if (h == HKEY_CURRENT_USER)   return "HKCU";
+        if (h == HKEY_LOCAL_MACHINE)  return "HKLM";
+        if (h == HKEY_USERS)          return "HKU";
+        if (h == HKEY_PERFORMANCE_DATA) return "HKPD";
+        if (h == HKEY_CURRENT_CONFIG) return "HKCC";
+        if (h == HKEY_DYN_DATA)       return "HKDD";
+        return "HKEY_UNKNOWN";
+    }
+}
+
 namespace
 {
     bool BuildDoubleNullListFromDir(const std::wstring& dir, std::vector<wchar_t>& out)
@@ -408,18 +423,6 @@ namespace
         }
     }
 
-    inline const char* HiveToStr(HKEY h)
-    {
-        if (h == HKEY_CLASSES_ROOT)   return "HKCR";
-        if (h == HKEY_CURRENT_USER)   return "HKCU";
-        if (h == HKEY_LOCAL_MACHINE)  return "HKLM";
-        if (h == HKEY_USERS)          return "HKU";
-        if (h == HKEY_PERFORMANCE_DATA) return "HKPD";
-        if (h == HKEY_CURRENT_CONFIG) return "HKCC";
-        if (h == HKEY_DYN_DATA)       return "HKDD";
-        return "HKEY_UNKNOWN";
-    }
-
     BOOL RegDelnodeRecurse(HKEY hKeyRoot, LPTSTR lpSubKey)
     {
         LPTSTR lpEnd;
@@ -431,22 +434,22 @@ namespace
 
         lResult = RegDeleteKey(hKeyRoot, lpSubKey);
         if (lResult == ERROR_SUCCESS) {
-            Log("RegDeleteKey succeeded: '%s\\%ls'\n", HiveToStr(hKeyRoot), lpSubKey);
+            Log("RegDeleteKey succeeded: '%s\\%ls'\n", utils::HiveToStr(hKeyRoot), lpSubKey);
             return TRUE;
         }
         else {
-            Log("RegDeleteKey initial failed for '%s\\%ls' (err=%ld)\n", HiveToStr(hKeyRoot), lpSubKey, lResult);
+            Log("RegDeleteKey initial failed for '%s\\%ls' (err=%ld)\n", utils::HiveToStr(hKeyRoot), lpSubKey, lResult);
         }
 
         lResult = RegOpenKeyEx(hKeyRoot, lpSubKey, 0, KEY_READ | KEY_WRITE, &hKey);
         if (lResult != ERROR_SUCCESS)
         {
             if (lResult == ERROR_FILE_NOT_FOUND) {
-                Log("RegOpenKeyEx: not found '%s\\%ls'\n", HiveToStr(hKeyRoot), lpSubKey);
+                Log("RegOpenKeyEx: not found '%s\\%ls'\n", utils::HiveToStr(hKeyRoot), lpSubKey);
                 return FALSE;
             }
             else {
-                Log("RegOpenKeyEx failed for '%s\\%ls' (err=%ld)\n", HiveToStr(hKeyRoot), lpSubKey, lResult);
+                Log("RegOpenKeyEx failed for '%s\\%ls' (err=%ld)\n", utils::HiveToStr(hKeyRoot), lpSubKey, lResult);
                 return FALSE;
             }
         }
@@ -469,10 +472,10 @@ namespace
             do {
                 *lpEnd = TEXT('\0');
                 StringCchCat(lpSubKey, MAX_PATH * 2, szName);
-                Log("Reg: recurse into '%s\\%ls'\n", HiveToStr(hKeyRoot), lpSubKey);
+                Log("Reg: recurse into '%s\\%ls'\n", utils::HiveToStr(hKeyRoot), lpSubKey);
 
                 if (!RegDelnodeRecurse(hKeyRoot, lpSubKey)) {
-                    Log("Reg: recurse failed on '%s\\%ls'\n", HiveToStr(hKeyRoot), lpSubKey);
+                    Log("Reg: recurse failed on '%s\\%ls'\n", utils::HiveToStr(hKeyRoot), lpSubKey);
                     break;
                 }
 
@@ -483,7 +486,7 @@ namespace
             } while (lResult == ERROR_SUCCESS);
         }
         else if (lResult != ERROR_NO_MORE_ITEMS) {
-            Log("RegEnumKeyEx failed for '%s\\%ls' (err=%ld)\n", HiveToStr(hKeyRoot), lpSubKey, lResult);
+            Log("RegEnumKeyEx failed for '%s\\%ls' (err=%ld)\n", utils::HiveToStr(hKeyRoot), lpSubKey, lResult);
         }
 
         lpEnd--;
@@ -493,11 +496,11 @@ namespace
 
         lResult = RegDeleteKey(hKeyRoot, lpSubKey);
         if (lResult == ERROR_SUCCESS) {
-            Log("RegDeleteKey succeeded after recursion: '%s\\%ls'\n", HiveToStr(hKeyRoot), lpSubKey);
+            Log("RegDeleteKey succeeded after recursion: '%s\\%ls'\n", utils::HiveToStr(hKeyRoot), lpSubKey);
             return TRUE;
         }
 
-        Log("RegDeleteKey failed after recursion: '%s\\%ls' (err=%ld)\n", HiveToStr(hKeyRoot), lpSubKey, lResult);
+        Log("RegDeleteKey failed after recursion: '%s\\%ls' (err=%ld)\n", utils::HiveToStr(hKeyRoot), lpSubKey, lResult);
         return FALSE;
     }
 
@@ -506,9 +509,9 @@ namespace
         TCHAR szDelKey[MAX_PATH * 2];
         StringCchCopy(szDelKey, MAX_PATH * 2, lpSubKey);
 
-        Log("RegDelnode start: '%s\\%ls'\n", HiveToStr(hKeyRoot), szDelKey);
+        Log("RegDelnode start: '%s\\%ls'\n", utils::HiveToStr(hKeyRoot), szDelKey);
         BOOL ok = RegDelnodeRecurse(hKeyRoot, szDelKey);
-        Log("RegDelnode %s: '%s\\%ls'\n", ok ? "success" : "failure", HiveToStr(hKeyRoot), szDelKey);
+        Log("RegDelnode %s: '%s\\%ls'\n", ok ? "success" : "failure", utils::HiveToStr(hKeyRoot), szDelKey);
         return ok ? true : false;
     }
 
@@ -620,14 +623,14 @@ namespace clean {
             HKEY root = regKeys[i].hKeyRoot;
             LPCTSTR sub = regKeys[i].lpSubKey;
 
-            Log("Reg: deleting '%s\\%ls'\n", HiveToStr(root), sub);
+            Log("Reg: deleting '%s\\%ls'\n", utils::HiveToStr(root), sub);
             bool result = RegDelnode(root, sub);
             if (result) {
-                Log("Reg: deleted OK '%s\\%ls'\n", HiveToStr(root), sub);
+                Log("Reg: deleted OK '%s\\%ls'\n", utils::HiveToStr(root), sub);
             }
             else {
                 DWORD err = GetLastError();
-                Log("Reg: delete failed '%s\\%ls' (err=%lu)\n", HiveToStr(root), sub, err);
+                Log("Reg: delete failed '%s\\%ls' (err=%lu)\n", utils::HiveToStr(root), sub, err);
             }
         }
     }
