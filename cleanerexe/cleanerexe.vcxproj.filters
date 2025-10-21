@@ -21,6 +21,9 @@
     <ClCompile Include="clean.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="spoof.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="global.h">

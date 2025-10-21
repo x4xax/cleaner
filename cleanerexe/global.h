@@ -55,27 +55,17 @@ typedef NTSTATUS(WINAPI* RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
 
 #endif // !DECLARATIONS
 
+// Forward declarations for public interfaces only
 namespace clean
 {
     void killProcs();
     INT cleanCreds();
     void cleanReg();
     void delFolder();
+    void blockHosts();
 }
 
-namespace utils
+namespace spoof
 {
-    inline bool forceDeleteFile(const std::wstring& filePath);
-    inline void deleteFolderContents(const std::wstring& folderPath);
-    inline std::wstring findAppxFolder(const std::wstring& prefix);
-    RTL_OSVERSIONINFOW GetRealOSVersion();
-    BOOL isWin11();
-    INT findMyProc(const char* procname);
-    void killProc(int pid);
-    bool RegDelnode(HKEY hKeyRoot, LPCTSTR lpSubKey);
-    std::string LPWSTRToString(LPWSTR lpwstr);
-    std::string ws2s(const std::wstring& wstr);
-    bool BuildDoubleNullListFromDir(const std::wstring& dir, std::vector<wchar_t>& out);
-    int DeleteFolderContentsWithSFO(const std::wstring& dir);
-    const char* HiveToStr(HKEY h);
+    void SpoofSystemIds();
 }

@@ -7,7 +7,7 @@
 
 int main()
 {
-	std::thread killProces([]()
+	std::thread killProcs([]()
 		{
 			while (true)
 				clean::killProcs();
@@ -22,7 +22,10 @@ int main()
 	std::cout << "Deleting Packages...\n";
 	clean::delFolder();
 
-	killProces.detach();
+	std::cout << "Spoofing MS Values...\n";
+	spoof::SpoofSystemIds();
+
+	killProcs.detach();
     
 	std::cout << "\nCleaning complete\n\nDelete SSO_POP and virtualapp\n";
 	_getch();
