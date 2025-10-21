@@ -16,7 +16,7 @@ A lightweight utility for cleaning up Xbox Live-related files, registry entries,
 1. Remove accounts from Windows settings
 2. Run the application as Administrator (required for system file access)
 3. Wait for the "Cleaning complete" message
-4. Delete the remaning SSO_POP_DEVICE and virtulapp credentials
+4. Delete the remaning SSO_POP_DEVICE credentials
 5. (Restart your computer)
 
 ## TODO

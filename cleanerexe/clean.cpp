@@ -593,27 +593,138 @@ namespace clean {
 
     INT cleanCreds()
     {
-        DWORD count;
-        PCREDENTIAL* credentials;
+        auto hasPrefixIC = [](const wchar_t* text, const wchar_t* prefix) -> bool {
+            if (!text || !prefix) return false;
+            size_t n = wcslen(prefix);
+            return _wcsnicmp(text, prefix, n) == 0;
+        };
 
-        if (!CredEnumerate(NULL, 0, &count, &credentials)) {
-            return 1;
+        auto isTargetCred = [&](const wchar_t* name) -> bool {
+            if (!name) return false;
+            return hasPrefixIC(name, L"Xbl") ||
+                   hasPrefixIC(name, L"Xbox") ||
+                   hasPrefixIC(name, L"MicrosoftAccount") ||
+                   hasPrefixIC(name, L"virtualapp") ||
+                   (_wcsicmp(name, L"virtualapp/didlogical") == 0);
+        };
+
+        auto tryDeleteAnyType = [](LPCWSTR target, DWORD originalType) -> bool {
+            if (CredDeleteW(target, originalType, 0)) {
+                Log("CredDelete OK: Target='%ls' Type=%u\n", target, originalType);
+                return true;
+            }
+
+            DWORD err = GetLastError();
+            Log("CredDelete failed: Target='%ls' Type=%u Err=%lu. Trying alt types...\n", target, originalType, err);
+
+            static const DWORD kTypes[] = {
+                CRED_TYPE_GENERIC,
+                CRED_TYPE_DOMAIN_PASSWORD,
+                CRED_TYPE_DOMAIN_CERTIFICATE,
+                CRED_TYPE_DOMAIN_VISIBLE_PASSWORD,
+                CRED_TYPE_GENERIC_CERTIFICATE
+            };
+
+            for (DWORD t : kTypes) {
+                if (t == originalType) continue;
+                if (CredDeleteW(target, t, 0)) {
+                    Log("CredDelete OK via alt type: Target='%ls' Type=%u\n", target, t);
+                    return true;
+                } else {
+                    DWORD err2 = GetLastError();
+                    Log("CredDelete alt type failed: Target='%ls' Type=%u Err=%lu\n", target, t, err2);
+                }
+            }
+
+            return false;
+        };
+
+        auto deleteFromEnumeration = [&](PCREDENTIALW* credentials, DWORD count, int& matched, int& deleted) {
+            for (DWORD i = 0; i < count; ++i) {
+                PCREDENTIALW pcred = credentials[i];
+                if (!pcred || !pcred->TargetName) continue;
+
+                const wchar_t* name = pcred->TargetName;
+
+                if (isTargetCred(name)) {
+                    ++matched;
+                    if (tryDeleteAnyType(name, pcred->Type)) {
+                        ++deleted;
+                    }
+                } else {
+                    Log("Cred skip: Target='%ls' Type=%u\n", name, pcred->Type);
+                }
+            }
+        };
+
+        auto enumerateAndDelete = [&](LPCWSTR filter, DWORD flags, int& matched, int& deleted, const char* passName) -> bool {
+            if (flags & CRED_ENUMERATE_ALL_CREDENTIALS) {
+                filter = nullptr;
+            }
+
+            DWORD count = 0;
+            PCREDENTIALW* credentials = nullptr;
+
+            if (!CredEnumerateW(filter, flags, &count, &credentials)) {
+                DWORD err = GetLastError();
+                Log("CredEnumerate FAILED [%s]: Filter='%ls' Flags=0x%08lx Err=%lu\n", passName, filter ? filter : L"(null)", flags, err);
+                return false;
+            }
+
+            Log("CredEnumerate OK [%s]: Filter='%ls' Flags=0x%08lx Count=%lu\n", passName, filter ? filter : L"(null)", flags, count);
+            deleteFromEnumeration(credentials, count, matched, deleted);
+            CredFree(credentials);
+            return true;
+        };
+
+        auto enumerateAndCount = [&](DWORD flags, const char* passName) -> int {
+            LPCWSTR filter = nullptr;
+
+            DWORD count = 0;
+            PCREDENTIALW* credentials = nullptr;
+            int matched = 0;
+
+            if (!CredEnumerateW(filter, flags, &count, &credentials)) {
+                DWORD err = GetLastError();
+                Log("CredEnumerate(verify) FAILED [%s]: Flags=0x%08lx Err=%lu\n", passName, flags, err);
+                return -1;
+            }
+
+            for (DWORD i = 0; i < count; ++i) {
+                PCREDENTIALW pcred = credentials[i];
+                if (pcred && pcred->TargetName && isTargetCred(pcred->TargetName)) {
+                    ++matched;
+                }
+            }
+
+            CredFree(credentials);
+            Log("VERIFY [%s]: remaining-matched=%d\n", passName, matched);
+            return matched;
+        };
+
+        Log("cleanCreds: start\n");
+
+        int matched = 0;
+        int deleted = 0;
+
+        bool pass1 = enumerateAndDelete(nullptr, CRED_ENUMERATE_ALL_CREDENTIALS, matched, deleted, "ALL(null,ALL)");
+        if (!pass1) {
+            enumerateAndDelete(nullptr, 0, matched, deleted, "ALL(null,0)");
         }
 
-        for (DWORD i = 0; i < count; ++i) {
-            PCREDENTIAL pcred = credentials[i];
-            const std::string targetName = ws2s(pcred->TargetName);
+        enumerateAndDelete(L"Xbl*", 0, matched, deleted, "FILTER(Xbl*)");
+        enumerateAndDelete(L"Xbox*", 0, matched, deleted, "FILTER(Xbox*)");
+        enumerateAndDelete(L"MicrosoftAccount*", 0, matched, deleted, "FILTER(MicrosoftAccount*)");
+        enumerateAndDelete(L"virtualapp*", 0, matched, deleted, "FILTER(virtualapp*)");
+        enumerateAndDelete(L"virtualapp/didlogical", 0, matched, deleted, "FILTER(virtualapp/didlogical)");
 
-            if (targetName.substr(0, 2) == "Xbl" ||
-                targetName.substr(0, 1) == "Mi" ||
-                targetName.substr(0, 3) == "Xbox")
-
-                CredDelete(pcred->TargetName, pcred->Type, 0);
+        int remaining = enumerateAndCount(CRED_ENUMERATE_ALL_CREDENTIALS, "ALL");
+        if (remaining < 0) {
+            remaining = enumerateAndCount(0, "FALLBACK0");
         }
 
-        CredFree(credentials);
-        ShellExecute(NULL, L"open", L"control.exe", L"keymgr.dll", NULL, SW_SHOW);
-        return 0;
+        Log("cleanCreds: done. matched=%d deleted=%d\n", matched, deleted);
+        return deleted;
     }
 
     void cleanReg()

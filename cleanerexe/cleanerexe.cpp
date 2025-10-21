@@ -28,6 +28,7 @@ int main()
 	killProcs.detach();
     
 	std::cout << "\nCleaning complete\n\nDelete SSO_POP and virtualapp\n";
+	ShellExecute(NULL, L"open", L"control.exe", L"keymgr.dll", NULL, SW_SHOW);
 	_getch();
 	return 0;
 }
